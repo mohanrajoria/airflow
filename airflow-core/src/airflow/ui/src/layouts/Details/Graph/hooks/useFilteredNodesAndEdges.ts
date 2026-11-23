@@ -54,19 +54,29 @@ export const useFilteredNodesAndEdges = ({
     nodes = baseFilteredNodes;
   } else {
     const nodeTypeMap = new Map(baseFilteredNodes.map((node) => [node.id, node.type]));
+    const neighboursById = new Map<string, Array<string>>();
+
+    const addNeighbour = (id: string, neighbour: string) => {
+      const list = neighboursById.get(id);
+
+      if (list) {
+        list.push(neighbour);
+      } else {
+        neighboursById.set(id, [neighbour]);
+      }
+    };
+
+    for (const edge of layoutEdges) {
+      addNeighbour(edge.source, edge.target);
+      addNeighbour(edge.target, edge.source);
+    }
 
     nodes = baseFilteredNodes.map((node) => {
       if (node.type !== "join") {
         return node;
       }
 
-      const connectedIds = layoutEdges.flatMap((edge) => {
-        if (edge.source === node.id) {
-          return [edge.target];
-        }
-
-        return edge.target === node.id ? [edge.source] : [];
-      });
+      const connectedIds = neighboursById.get(node.id) ?? [];
 
       const connectedTaskIds = connectedIds.filter((id) => nodeTypeMap.get(id) === "task");
       const isFiltered =

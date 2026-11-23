@@ -18,7 +18,8 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { getGatePathEdgeIdsForSelection } from "./reactflowUtils";
+import { flattenGraph, getGatePathEdgeIdsForSelection } from "./reactflowUtils";
+import type { LayoutNode } from "./useGraphLayout";
 
 const node = (id: string, type: string) => ({ id, type });
 const edge = (id: string, source: string, target: string) => ({ id, source, target });
@@ -114,5 +115,24 @@ describe("getGatePathEdgeIdsForSelection", () => {
     const result = getGatePathEdgeIdsForSelection(nodes, edges, () => false);
 
     expect(result).toEqual(new Set());
+  });
+});
+
+describe("flattenGraph", () => {
+  it("declares each node's ELK size and handles so xyflow need not mount it to measure it", () => {
+    const { nodes } = flattenGraph({
+      children: [
+        { height: 80, id: "a", label: "a", type: "task", width: 200, x: 10, y: 20 },
+      ] satisfies Array<LayoutNode>,
+    });
+
+    expect(nodes[0]).toMatchObject({
+      handles: [
+        { position: "top", type: "target", x: 100, y: 0 },
+        { position: "bottom", type: "source", x: 100, y: 80 },
+      ],
+      measured: { height: 80, width: 200 },
+      position: { x: 10, y: 20 },
+    });
   });
 });

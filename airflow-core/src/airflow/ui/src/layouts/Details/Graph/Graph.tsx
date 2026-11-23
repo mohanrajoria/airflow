@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 import { Box, Spinner, useToken } from "@chakra-ui/react";
 import { Background, MiniMap, ReactFlow, type Node as ReactFlowNode } from "@xyflow/react";
@@ -43,10 +43,12 @@ import { useGridTiSummariesStream } from "src/queries/useGridTISummaries.ts";
 import { getReactFlowThemeStyle } from "src/theme";
 
 import { FitViewOnLayout } from "./components/FitViewOnLayout";
+import { FullDagModeToggle } from "./components/FullDagModeToggle";
 import { GraphControls } from "./components/GraphControls";
 import { useFilteredNodesAndEdges } from "./hooks/useFilteredNodesAndEdges";
 import { useGraphSearchParams } from "./hooks/useGraphSearchParams";
 import { useGraphFilteredNodes } from "./useGraphFilteredNodes";
+import { getDefaultFocusId, getFocusedGraph, countTasks, GRAPH_FOCUS_TASK_LIMIT } from "./utils/focusGraph";
 import { nodeColor } from "./utils/nodeColor";
 
 // Hoisted to module scope so ReactFlow receives a stable reference and skips
@@ -59,8 +61,15 @@ export const Graph = () => {
 
   const selectedVersion = useSelectedVersion();
 
-  const { depth, filterRoot, graphFilters, hasActiveFilter, includeDownstream, includeUpstream } =
-    useGraphSearchParams();
+  const {
+    depth,
+    filterRoot,
+    graphFilters,
+    hasActiveFilter,
+    includeDownstream,
+    includeUpstream,
+    isFullDagMode,
+  } = useGraphSearchParams();
 
   // corresponds to the "bg", "bg.emphasized", "border.inverted" semantic tokens
   const [oddLight, oddDark, evenLight, evenDark, selectedDarkColor, selectedLightColor] = useToken("colors", [
@@ -110,10 +119,51 @@ export const Graph = () => {
   const dagDepEdges = showAllDependencies ? dagDependencies.edges : [];
   const dagDepNodes = showAllDependencies ? dagDependencies.nodes : [];
 
-  const layoutEdges = [...graphData.edges, ...dagDepEdges];
+  const totalTaskCount = useMemo(() => countTasks(graphData.nodes), [graphData.nodes]);
+  const isLargeDag = totalTaskCount > GRAPH_FOCUS_TASK_LIMIT;
+  const isFocusedMode = isLargeDag && !isFullDagMode;
+  const selectedNodeId = taskId ?? groupId;
+
+  // openGroupIds is rebuilt on every render by the groups context; key the memos on its contents.
+  const openGroupIdsKey = openGroupIds.join("\n");
+  const openGroupIdSet = useMemo(
+    () => new Set(openGroupIdsKey === "" ? [] : openGroupIdsKey.split("\n")),
+    [openGroupIdsKey],
+  );
+
+  const focusedGraph = useMemo(
+    () =>
+      isFocusedMode
+        ? getFocusedGraph({
+            edges: graphData.edges,
+            focusId: selectedNodeId,
+            limit: GRAPH_FOCUS_TASK_LIMIT,
+            nodes: graphData.nodes,
+            openGroupIds: openGroupIdSet,
+          })
+        : undefined,
+    [graphData.edges, graphData.nodes, isFocusedMode, openGroupIdSet, selectedNodeId],
+  );
+
+  const defaultFullDagFocusId = useMemo(
+    () =>
+      isLargeDag && isFullDagMode
+        ? getDefaultFocusId({ edges: graphData.edges, nodes: graphData.nodes, openGroupIds: openGroupIdSet })
+        : undefined,
+    [graphData.edges, graphData.nodes, isFullDagMode, isLargeDag, openGroupIdSet],
+  );
+
+  const focusNodeId = isLargeDag
+    ? (focusedGraph?.focusId ?? selectedNodeId ?? defaultFullDagFocusId)
+    : undefined;
+
+  const visibleGraph = focusedGraph ?? graphData;
+  const layoutEdges = [...visibleGraph.edges, ...dagDepEdges];
   const layoutNodes = dagDepNodes.length
-    ? dagDepNodes.map((node) => (node.id === `dag:${dagId}` ? { ...node, children: graphData.nodes } : node))
-    : graphData.nodes;
+    ? dagDepNodes.map((node) =>
+        node.id === `dag:${dagId}` ? { ...node, children: visibleGraph.nodes } : node,
+      )
+    : visibleGraph.nodes;
   const layoutOpenGroupIds = [...openGroupIds, ...(showAllDependencies ? [`dag:${dagId}`] : [])];
 
   const { data, isPending } = useGraphLayout({
@@ -139,8 +189,13 @@ export const Graph = () => {
     nodeId === taskId || nodeId === groupId || nodeId === `dag:${dagId}`;
 
   // Add task instances to the node data but without having to recalculate how the graph is laid out
+  const taskInstanceById = useMemo(
+    () => new Map(gridTISummaries?.task_instances.map((ti) => [ti.task_id, ti])),
+    [gridTISummaries],
+  );
+
   const nodesWithTI = data?.nodes.map((node) => {
-    const taskInstance = gridTISummaries?.task_instances.find((ti) => ti.task_id === node.id);
+    const taskInstance = taskInstanceById.get(node.id);
 
     return {
       ...node,
@@ -174,10 +229,15 @@ export const Graph = () => {
         )
       : filteredEdges;
 
-  const selectedNodeId = taskId ?? groupId;
-
   return (
     <Box height="100%" position="relative" width="100%">
+      {isLargeDag ? (
+        <FullDagModeToggle
+          isFullDagMode={isFullDagMode}
+          totalTaskCount={totalTaskCount}
+          visibleTaskCount={focusedGraph?.visibleTaskCount ?? totalTaskCount}
+        />
+      ) : undefined}
       {isPending ? (
         <Box
           alignItems="center"
@@ -213,7 +273,7 @@ export const Graph = () => {
         {/* Fit the viewport after each new ELK layout instead of using the
             fitView prop, which re-fires on every re-mount even when nodes are
             served from the React Query cache. */}
-        <FitViewOnLayout layoutData={data} />
+        <FitViewOnLayout focusNodeId={focusNodeId} layoutData={data} />
         <GraphControls dagId={dagId} selectedNodeId={selectedNodeId} />
         {/* Hide the MiniMap for large graphs — it processes all nodes even when
             onlyRenderVisibleElements is set, adding meaningful paint cost with

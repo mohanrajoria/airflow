@@ -109,5 +109,8 @@ export const useGraphLayout = ({
 
       return { edges: formattedEdges, nodes: flattenedData.nodes };
     },
+    // Inputs that change the layout are all in the query key (the body font only affects label
+    // widths), so re-running ELK on remount or window focus would just repeat the same work.
     queryKey: ["graphLayout", nodes, openGroupIds, versionNumber, edges, direction],
+    staleTime: Infinity,
   });

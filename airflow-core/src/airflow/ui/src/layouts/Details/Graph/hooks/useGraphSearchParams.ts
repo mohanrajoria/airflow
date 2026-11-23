@@ -29,6 +29,7 @@ type GraphSearchParams = {
   hasActiveFilter: boolean;
   includeDownstream: boolean;
   includeUpstream: boolean;
+  isFullDagMode: boolean;
 };
 
 export const useGraphSearchParams = (): GraphSearchParams => {
@@ -40,6 +41,7 @@ export const useGraphSearchParams = (): GraphSearchParams => {
   const depthParam = searchParams.get("depth");
   const depth = depthParam !== null && depthParam !== "" ? parseInt(depthParam, 10) : undefined;
   const hasActiveFilter = includeUpstream || includeDownstream;
+  const isFullDagMode = searchParams.get(SearchParamsKeys.GRAPH_FULL_DAG) === "true";
 
   const durationParam = searchParams.get(SearchParamsKeys.GRAPH_DURATION_GTE);
   const mapIndexParam = searchParams.get(SearchParamsKeys.GRAPH_MAP_INDEX);
@@ -54,5 +56,13 @@ export const useGraphSearchParams = (): GraphSearchParams => {
     selectedTaskGroups: searchParams.getAll(SearchParamsKeys.GRAPH_TASK_GROUP),
   };
 
-  return { depth, filterRoot, graphFilters, hasActiveFilter, includeDownstream, includeUpstream };
+  return {
+    depth,
+    filterRoot,
+    graphFilters,
+    hasActiveFilter,
+    includeDownstream,
+    includeUpstream,
+    isFullDagMode,
+  };
 };

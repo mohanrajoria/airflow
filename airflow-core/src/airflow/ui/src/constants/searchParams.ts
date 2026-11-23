@@ -66,6 +66,7 @@ export enum SearchParamsKeys {
   FROM_RANGE = "from_range",
   GANTT = "gantt",
   GRAPH_DURATION_GTE = "graph-duration_gte",
+  GRAPH_FULL_DAG = "graph-full_dag",
   GRAPH_MAP_INDEX = "graph-map_index",
   GRAPH_OPERATOR = "graph-operator",
   GRAPH_TASK_GROUP = "graph-task_group",

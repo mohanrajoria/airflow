@@ -16,7 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import type { Node as FlowNodeType, Edge as FlowEdgeType } from "@xyflow/react";
+import { Position, type Node as FlowNodeType, type Edge as FlowEdgeType } from "@xyflow/react";
 import type { ElkExtendedEdge } from "elkjs";
 
 import type { LightGridTaskInstanceSummary, NodeResponse } from "openapi/requests/types.gen";
@@ -82,8 +82,17 @@ export const flattenGraph = ({
     const y = (parent?.position.y ?? 0) + (node.y ?? 0);
     const newNode = {
       data: { ...node, depth: level },
+      // ELK already sized every node, and edges are drawn from ELK's own routes. Declaring the size
+      // and the two NodeWrapper handles up front lets xyflow skip its one-off "mount every node to
+      // measure it" pass, which otherwise renders all nodes despite onlyRenderVisibleElements, and
+      // lets fitView resolve without every node being mounted.
+      handles: [
+        { position: Position.Top, type: "target", x: (node.width ?? 0) / 2, y: 0 },
+        { position: Position.Bottom, type: "source", x: (node.width ?? 0) / 2, y: node.height ?? 0 },
+      ],
       height: node.height,
       id: node.id,
+      measured: { height: node.height, width: node.width },
       position: { x, y },
       type: node.type,
       width: node.width,
