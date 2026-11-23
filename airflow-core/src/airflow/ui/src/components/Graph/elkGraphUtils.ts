@@ -298,9 +298,10 @@ export const generateElkGraph = ({
   openGroupIds,
 }: GenerateElkProps): ElkNode => {
   let filteredEdges = unformattedEdges;
+  const openGroupIdSet = new Set(openGroupIds);
 
   const formatChildNode = (node: NodeResponse): FormattedNode => {
-    const isOpen = openGroupIds?.includes(node.id);
+    const isOpen = openGroupIdSet.has(node.id);
     const childCount = node.children?.filter((child) => child.type !== "join").length ?? 0;
     const childIds =
       node.children === null || node.children === undefined ? [] : getNestedChildIds(node.children);
@@ -365,7 +366,7 @@ export const generateElkGraph = ({
       };
     }
 
-    if (!isOpen && node.children !== undefined) {
+    if (!isOpen && node.children !== null && node.children !== undefined) {
       // Use a Set for O(1) membership checks — childIds.includes() would be
       // O(n) per edge, turning the filter/map into O(n × E) for large groups.
       filteredEdges = rewriteGroupEdges({
@@ -431,9 +432,17 @@ export const generateElkGraph = ({
       // sweeps are attempted. Drop to 3 for large graphs where the extra passes
       // rarely pay off and add noticeable layout latency.
       ...(filteredEdges.length > 100 ? { "elk.layered.thoroughness": "3" } : {}),
+      // Above 1000 edges the greedy switch passes cost more than they save.
+      ...(filteredEdges.length > 1000
+        ? {
+            "elk.layered.crossingMinimization.greedySwitch.type": "OFF",
+            "elk.layered.crossingMinimization.greedySwitchHierarchical.type": "OFF",
+            "elk.layered.thoroughness": "1",
+          }
+        : {}),
       // hierarchyHandling is only needed when open groups create cross-hierarchy
       // edges. For flat DAGs (no open groups) omitting it simplifies ELK's task.
-      ...(Boolean(openGroupIds?.length) ? { hierarchyHandling: "INCLUDE_CHILDREN" } : {}),
+      ...(openGroupIdSet.size > 0 ? { hierarchyHandling: "INCLUDE_CHILDREN" } : {}),
       "spacing.edgeLabel": "10.0",
     },
   };

@@ -304,6 +304,38 @@ describe("generateElkGraph — closed TaskGroup", () => {
   });
 });
 
+describe("generateElkGraph — plain tasks", () => {
+  it("does not rebuild the edge list for tasks whose children are null", () => {
+    const nodes = [
+      buildNode({ id: "a", label: "a" }),
+      buildNode({ id: "b", label: "b" }),
+      buildNode({ id: "c", label: "c" }),
+    ];
+    const edges = [buildEdge("a", "b"), buildEdge("b", "c")];
+    let edgeReads = 0;
+    const countedEdges = new Proxy(edges, {
+      get: (target, property, receiver) => {
+        if (property === "filter") {
+          edgeReads += 1;
+        }
+
+        return Reflect.get(target, property, receiver) as unknown;
+      },
+    });
+
+    const root = generateElkGraph({
+      direction: "RIGHT",
+      edges: countedEdges,
+      font: "12px sans-serif",
+      nodes,
+      openGroupIds: [],
+    });
+
+    expect(edgeReads).toBe(0);
+    expect(root.edges?.map((edge) => edge.id)).toEqual(["a-b", "b-c"]);
+  });
+});
+
 describe("generateElkGraph — operator colors", () => {
   it("maps ui_color/ui_fgcolor onto the formatted leaf node", () => {
     const root = generateElkGraph({
@@ -395,5 +427,46 @@ describe("generateElkGraph — layout options", () => {
     });
 
     expect(root.layoutOptions).not.toHaveProperty("elk.layered.nodePlacement.strategy");
+  });
+
+  it.each([
+    { edgeCount: 50, expected: undefined },
+    { edgeCount: 101, expected: "3" },
+    { edgeCount: 1000, expected: "3" },
+  ])("keeps thoroughness $expected for $edgeCount edges", ({ edgeCount, expected }) => {
+    const nodes = Array.from({ length: edgeCount + 1 }, (_, index) =>
+      buildNode({ id: `t${index}`, label: `t${index}` }),
+    );
+    const edges = nodes.slice(1).map((node, index) => buildEdge(`t${index}`, node.id));
+    const root = generateElkGraph({
+      direction: "RIGHT",
+      edges,
+      font: "12px sans-serif",
+      nodes,
+      openGroupIds: [],
+    });
+
+    expect(root.layoutOptions?.["elk.layered.thoroughness"]).toBe(expected);
+    expect(root.layoutOptions).not.toHaveProperty("elk.layered.crossingMinimization.greedySwitch.type");
+  });
+
+  it("drops thoroughness and disables greedy switching above 1000 edges", () => {
+    const nodes = Array.from({ length: 1002 }, (_, index) =>
+      buildNode({ id: `t${index}`, label: `t${index}` }),
+    );
+    const edges = nodes.slice(1).map((node, index) => buildEdge(`t${index}`, node.id));
+    const root = generateElkGraph({
+      direction: "RIGHT",
+      edges,
+      font: "12px sans-serif",
+      nodes,
+      openGroupIds: [],
+    });
+
+    expect(root.layoutOptions).toMatchObject({
+      "elk.layered.crossingMinimization.greedySwitch.type": "OFF",
+      "elk.layered.crossingMinimization.greedySwitchHierarchical.type": "OFF",
+      "elk.layered.thoroughness": "1",
+    });
   });
 });
